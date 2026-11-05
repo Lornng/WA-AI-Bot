@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+      POSTGRES_DB: evolution
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution:
+    image: evoapicloud/evolution-api:2.3.7
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgres
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution@postgres:5432/evolution
+      WEBHOOK_GLOBAL: http://bot:3010/webhook
+      LOG_LEVEL: info
+      SESSION_MODE: default
+    ports:
+      - "3000:3000"
+    volumes:
+      - evolution_data:/evolution/instances
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - evolution
+    env_file: .env
+    environment:
+      EVOLUTION_URL: http://evolution:3000
+    ports:
+      - "3010:3010"
+    volumes:
+      - bot_data:/app/data
+
+volumes:
+  pgdata:
+  evolution_data:
+  bot_data:
