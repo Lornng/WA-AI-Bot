@@ -6,7 +6,10 @@ import { EvolutionClient } from './whatsapp/client.js';
 import { JiraClient } from './integrations/jira.js';
 import { normalize } from './whatsapp/normalize.js';
 import { Router } from './router.js';
-import type { DispatchDeps } from './commands/index.js';
+import { dispatchCommand, parseCommand, type DispatchDeps } from './commands/index.js';
+import { aiAnswer } from './ai/answer.js';
+import type { WaMessage } from './whatsapp/types.js';
+import { DEV_CHAT_HTML } from './dev-chat.html.js';
 
 const cfg = loadConfig();
 const log = pino({ name: 'wa-ai-bot' });
@@ -104,6 +107,58 @@ app.post('/webhook', async (req, reply) => {
     .handle(msg, deps)
     .catch((err) => log.error({ err, chatId: msg.chatId, id: msg.id }, 'router error'));
 });
+
+/**
+ * Local dev chat (enabled with DEV_CHAT=1): exercise the exact same command +
+ * AI pipeline a WhatsApp DM would use, without a linked number.
+ * Simulates a DM from the owner; replies are returned as JSON instead of sent
+ * through Evolution.
+ */
+if (cfg.DEV_CHAT) {
+  const devOut: string[] = [];
+  const devWa = {
+    sendText: (_chatId: string, text: string) => {
+      devOut.push(text);
+      return Promise.resolve({});
+    },
+    setPresence: () => Promise.resolve({}),
+    sendReaction: () => Promise.resolve({}),
+    getGroupMetadata: () => Promise.resolve({ participants: [] }),
+    connectionState: () => Promise.resolve({ state: 'dev' }),
+  } as unknown as EvolutionClient;
+  const devDeps: DispatchDeps = { cfg, store, wa: devWa, jira };
+
+  app.post('/dev/chat', async (req, reply) => {
+    const { text } = (req.body ?? {}) as any;
+    if (typeof text !== 'string' || !text.trim()) {
+      return reply.code(400).send({ error: 'text required' });
+    }
+    const ownerDigits = cfg.OWNER_NUMBER || '0000000000';
+    const msg: WaMessage = {
+      id: `dev-${Date.now()}`,
+      chatId: `dev-${ownerDigits}@c.us`,
+      isGroup: false,
+      senderId: `${ownerDigits}@s.whatsapp.net`,
+      senderName: 'Dev',
+      text: text.trim(),
+      messageType: 'conversation',
+      mentionsBot: false,
+      replyToBot: false,
+      fromMe: false,
+      timestamp: Date.now(),
+    };
+    devOut.length = 0;
+    const parsed = parseCommand(msg.text, cfg.BOT_PREFIX);
+    if (parsed) {
+      await dispatchCommand(msg, parsed, devDeps);
+    } else {
+      devOut.push(await aiAnswer(msg, devDeps));
+    }
+    return { reply: devOut.join('\n\n') };
+  });
+
+  app.get('/dev', async (_req, reply) => reply.type('text/html; charset=utf-8').send(DEV_CHAT_HTML));
+}
 
 await startup();
 await app.listen({ port: cfg.PORT, host: '0.0.0.0' });

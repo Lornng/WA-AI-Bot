@@ -22,6 +22,9 @@ const Env = z.object({
   EVOLUTION_INSTANCE: str('default'),
   EVOLUTION_INSTANCE_TOKEN: str(''),
 
+  /** 1 = expose the local dev chat at /dev (test pipeline without WhatsApp). */
+  DEV_CHAT: z.string().default('0').transform((v) => v === '1' || v === 'true'),
+
   ANTHROPIC_API_KEY: str(''),
   ANTHROPIC_MODEL: str('claude-sonnet-5-5'),
 

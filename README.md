@@ -106,7 +106,23 @@ See `.env.example` for all variables. Key ones:
 ```bash
 npm test               # vitest: normalize + router (fake Evolution client)
 npm run build          # tsc type-check/build
+sh scripts/smoke.sh    # build + boot server + POST a fake webhook (no Evolution needed)
 ```
+
+### Dev chat — test the bot without a WhatsApp number
+
+With `DEV_CHAT=1` in `.env`, the bot serves a local chat page that runs the exact
+same pipeline a WhatsApp DM uses (router, commands, Claude, Jira tools), simulating
+a DM from `OWNER_NUMBER`:
+
+```bash
+npm run dev            # with DEV_CHAT=1 in .env
+# open http://localhost:3010/dev
+```
+
+Useful before you have a linked number, and handy afterwards (e.g. `!jira create …`
+to test Jira wiring without a phone in hand). Don't expose the port publicly with
+`DEV_CHAT=1`.
 
 ## Extending (new integrations)
 
@@ -134,6 +150,7 @@ src/ai/tools.ts             # Jira tool definitions + executor
 src/commands/               # registry + one file per command
 src/integrations/jira.ts    # Jira Cloud client
 src/store/db.ts             # SQLite: messages, history, group settings
+src/dev-chat.html.ts        # /dev local test page (DEV_CHAT=1)
+scripts/smoke.sh            # pipeline smoke test without Evolution
 tests/                      # vitest unit tests
 ```
-# WA-AI-Bot
